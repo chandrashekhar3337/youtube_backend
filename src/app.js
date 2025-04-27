@@ -15,4 +15,10 @@ import cookieParser from "cookie-parser"
 
  app.use(cookieParser())
 
+
+ // routes:import
+ import userRouter from './routes/user.routes.js'
+ // routed declartion:
+app.use("/api/v1/users",userRouter)
+
  export { app }
