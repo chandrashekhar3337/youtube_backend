@@ -12,6 +12,11 @@ const userSchema = new Schema(
         trim:true,
         index:true
     },
+    phone:{
+      type:String,
+      unique:true,
+      required:true
+    },
     email:{
         type:String,
         required:true,

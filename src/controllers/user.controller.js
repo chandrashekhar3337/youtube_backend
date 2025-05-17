@@ -7,8 +7,8 @@ import { ApiResponse } from "../utils/apiResponse.js";
 import { OTP } from "../models/otp.models.js";
 import { sendEmail } from "../utils/sendEmail.js";
 import jwt  from "jsonwebtoken";
-
-
+import {OTP} from "../models/userModel.js";
+import twilio from 'twilio';
 
 const generateRefreshAccessToken = async(userId,res) => {
      
@@ -59,17 +59,18 @@ const registerUser = asyncHandler(async(req,res) =>{
     // check for user creatio
     //return response:
     
-    const {username,fullname,password, email} = req.body
+    const {username,fullname,password, email,phone} = req.body
     console.log(username);
     console.log(fullname);
     console.log(email);
     console.log(password);
+    console.log(phone)
 
     // if(fullname = ""){
     //    throw new ApiError(404,"full name is required")
     // }
     // Checking the validation of all the field:
-    if([username, fullname, email, password].some((field) => field?.trim() === "")){
+    if([username, fullname, email, password,phone].some((field) => field?.trim() === "")){
         throw new ApiError(404,"this field need to correction")
     }
     const exitedUser =await User.findOne({
@@ -97,6 +98,7 @@ const registerUser = asyncHandler(async(req,res) =>{
     //   avatar:avatar.url,
     //   coverImage:coverImage.url,
       password,
+      phone,
       username:username.toLowerCase()
    })
    await user.save(); 
@@ -145,18 +147,71 @@ const registerUser = asyncHandler(async(req,res) =>{
 
 //    })
 // ✅ Send OTP Controller
+// const DUMMY_OTP = "123456";
 const sendOtp = asyncHandler(async (req, res) => {
-    const { email } = req.body;
 
-    if (!email) throw new ApiError(400, "Email is required");
+// Replace with your Twilio credentials
+const accountSid = process.env.YOUR_TWILIO_ACCOUNT_SID;
+const authToken = process.env.YOUR_TWILIO_AUTH_TOKEN;
+const client = twilio(accountSid, authToken);
 
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  const { phone } = req.body;
+   if (!phone) {
+    return res.status(400).json({ message: 'Phone number is required' });
+  }
+  const user = await User.findOne({ phone });
+  if (!user) {
+    return res.status(404).json({ message: 'User not found with this phone number' });
+  }
+  // Generate 6-digit OTP
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  const expiresAt = new Date(Date.now() + 5 * 60 * 1000); 
 
-    await OTP.create({ email, otp });
 
-    await sendEmail(email, "Your OTP Code", `Your OTP is: ${otp}`);
+  try {
+    const message = await client.messages.create({
+      body: `Your OTP is ${otp}`,
+      from: process.env.NUMBER, // Your Twilio number
+      to: `+91${phone}`,
+    });
+     await OTP.deleteMany({ phone });
 
-    res.status(200).json(new ApiResponse(200, {}, "OTP sent successfully"));
+  // Save new OTP
+  await OTP.create({ phone, otp, expiresAt });
+
+    console.log(message.sid);
+    res.status(200).json({ message: `OTP sent to ${phone}`, otp });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Failed to send OTP', error });
+  }
+
+
+
+//     const { phone } = req.body;
+
+//   if (!phone) return res.status(400).json({ message: 'Phone number is required' });
+
+//   // Store or find user(dummy otp)
+//   let user = await User.findOne({ phone });
+//   if (!user) {
+//     user = await User.create({ phone });
+//   }
+
+//   // Simulate OTP sent (dummy)
+//   res.status(200).json({ message: `OTP sent to ${phone}`, otp: DUMMY_OTP }); // Don't send OTP in production
+
+    // const { email } = req.body;
+
+    // if (!email) throw new ApiError(400, "Email is required");
+
+    // const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // await OTP.create({ email, otp });
+
+    // await sendEmail(email, "Your OTP Code", `Your OTP is: ${otp}`);
+
+    // res.status(200).json(new ApiResponse(200, {}, "OTP sent successfully"));
 });
 
 // ✅ Verify OTP Controller
@@ -232,28 +287,32 @@ const verifyOtp = asyncHandler(async (req, res) => {
                httpOnly:true,
                secure:true
            }
-          return generateRefreshAccessToken(user._id, res)
-        //    const {accessToken,newrefreshToken} = await generateRefreshAccessToken(user._id, res);
-        //    return res
-        //    .status(200)
-        //    .cookie("accessToken",accessToken,option)
-        //    .cookie("refreshToken",newrefreshToken,option)
-        //    .json(
-        //        new ApiResponse(
-        //            200,
-        //            {
-        //               accessToken,refreshToken:newrefreshToken
-        //            },
-        //            "Access Token refresh successfully"
-        //        )
-        //    )
+            const {accessToken,newrefreshToken} = await generateRefreshAccessToken(user._id, res);
+            return res
+            .status(200)
+            .cookie("accessToken",accessToken,option)
+            .cookie("refreshToken",newrefreshToken,option)
+            .json(
+                new ApiResponse(
+                    200,
+                    {
+                       accessToken,refreshToken:newrefreshToken
+                    },
+                    "Access Token refresh successfully"
+                )
+            )
      } catch (error) {
         throw new ApiError(401,error?.message ||" Invalid refreshToken")
      }
 
      }
 
- ) 
+ )
+ 
+ const changeCurrentPassword = asyncHandler(async(req,res) =>{
+    const {oldPassword, newPassword} = req.body
+    const user = await User.findById(req.user?._id)
+})
 
 export {registerUser,
     refreshAccessToken,
