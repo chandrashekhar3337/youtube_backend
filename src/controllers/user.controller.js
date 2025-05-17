@@ -4,6 +4,10 @@ import { ApiError } from "../utils/apierror.js";
 import { upload } from "../middlewares/multer.middleware.js";
 import { uploadOnCloudinary } from "../utils/cloudnary.js";
 import { ApiResponse } from "../utils/apiResponse.js";
+import { OTP } from "../models/otp.models.js";
+import { sendEmail } from "../utils/sendEmail.js";
+import jwt  from "jsonwebtoken";
+
 
 
 const generateRefreshAccessToken = async(userId,res) => {
@@ -11,7 +15,7 @@ const generateRefreshAccessToken = async(userId,res) => {
     try {
         const user = await User.findById(userId)
         const accessToken = user.generateAccessToken()
-        
+
         const refreshToken = user.generateRefreshToken()
         const loggedInUser = await User.findById(user._id).select("-password -refreshToken")
 
@@ -74,24 +78,24 @@ const registerUser = asyncHandler(async(req,res) =>{
     if(exitedUser){
         throw new ApiError(409,"user already exist");
     }
-    const avatarPath = req.files?.avatar?.[0]?.path;
-    const coverImagePath = req.files?.coverImage?.[0]?.path;
+//     const avatarPath = req.files?.avatar?.[0]?.path;
+//     const coverImagePath = req.files?.coverImage?.[0]?.path;
 
 
-    if(!avatarPath){
-        throw new ApiError(404, "avtar required")
-    }
-   const avatar= await uploadOnCloudinary(avatarPath)
-   const coverImage = await uploadOnCloudinary(coverImagePath)
-   if(!avatar){
-    throw new ApiError(404, "avatar required")
-   }
+//     if(!avatarPath){
+//         throw new ApiError(404, "avtar required")
+//     }
+//    const avatar= await uploadOnCloudinary(avatarPath)
+//    const coverImage = await uploadOnCloudinary(coverImagePath)
+//    if(!avatar){
+//     throw new ApiError(404, "avatar required")
+//    }
 
    const user = await User.create({
       fullname,
       email,
-      avatar:avatar.url,
-      coverImage:coverImage.url,
+    //   avatar:avatar.url,
+    //   coverImage:coverImage.url,
       password,
       username:username.toLowerCase()
    })
@@ -110,36 +114,77 @@ const registerUser = asyncHandler(async(req,res) =>{
    )
 })
 
-   const loginUser = asyncHandler(async(req,res) => {
-       // req.body = data
-       //username or mail
-       //find the user
-       // password check
-       //access and refresh token
-       //send cookie
-       const {email, username, password} =req.body
-       console.log(email,password)
+//    const loginUser = asyncHandler(async(req,res) => {
+//        // req.body = data
+//        //username or mail
+//        //find the user
+//        // password check
+//        //access and refresh token
+//        //send cookie
+//        const {email, username, password} =req.body
+//        console.log(email,password)
 
-       if(!(username || email)){
-        throw new ApiError(400,"username and password is reqired")
-       }
-       const user = await User.findOne({
-         $or: [{username}, {email}]
-       })
-       if(!user){
-         throw new ApiError(404, "user does not exist")
-       }
-       const isPasswordValue = await user.isPasswordCorrect(password)
-       console.log(isPasswordValue)
+//        if(!(username || email)){
+//         throw new ApiError(400,"username and password is reqired")
+//        }
+//        const user = await User.findOne({
+//          $or: [{username}, {email}]
+//        })
+//        if(!user){
+//          throw new ApiError(404, "user does not exist")
+//        }
+//        const isPasswordValue = await user.isPasswordCorrect(password)
+//        console.log(isPasswordValue)
 
-       if(!isPasswordValue){
-         throw new ApiError(401,"Enter the write password")
-       }
+//        if(!isPasswordValue){
+//          throw new ApiError(401,"Enter the write password")
+//        }
 
-     return await generateRefreshAccessToken(user._id,res)
-    //  const loggedInUser = await User.findById(user._id).select("-password -refreshToken")
+//      return await generateRefreshAccessToken(user._id,res)
+//     //  const loggedInUser = await User.findById(user._id).select("-password -refreshToken")
 
-   })
+//    })
+// ✅ Send OTP Controller
+const sendOtp = asyncHandler(async (req, res) => {
+    const { email } = req.body;
+
+    if (!email) throw new ApiError(400, "Email is required");
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    await OTP.create({ email, otp });
+
+    await sendEmail(email, "Your OTP Code", `Your OTP is: ${otp}`);
+
+    res.status(200).json(new ApiResponse(200, {}, "OTP sent successfully"));
+});
+
+// ✅ Verify OTP Controller
+const verifyOtp = asyncHandler(async (req, res) => {
+    const { email, otp } = req.body;
+
+    if (!email || !otp) throw new ApiError(400, "Email and OTP are required");
+
+    const existingOtp = await OTP.findOne({ email, otp });
+    if (!existingOtp) throw new ApiError(400, "Invalid or expired OTP");
+
+    let user = await User.findOne({ email });
+
+    if (!user) {
+        // New user bana do agar pehli baar OTP se login kar raha hai
+        user = await User.create({
+            username: email.split("@")[0] + Math.floor(Math.random() * 1000),
+            email,
+            fullname: "OTP User",
+            avatar: "https://i.ibb.co/default-avatar.png", // default
+            password: "OtpLogin@123", // dummy password
+        });
+    }
+
+    await OTP.deleteMany({ email }); // OTP hatado after use
+
+    return await generateRefreshAccessToken(user._id, res);
+});
    
    const logoutUser = asyncHandler(async(req,res) =>{
       
@@ -163,7 +208,55 @@ const registerUser = asyncHandler(async(req,res) =>{
     .json(new ApiResponse(200, {}, "User logged out successfully"))
    })
 
+   const refreshAccessToken = asyncHandler(async(req,res) =>{
+    
+    const incomingRefreshToken =req.cookies.refreshToken || req.body.refreshToken
+    console.log(incomingRefreshToken)
+    if(!incomingRefreshToken){
+         throw new ApiError(401,"unauthorized request")
+     }
+     try {
+        const decodeToken =jwt.verify(incomingRefreshToken,process.env.REFRESH_TOKEN_SECRET)
+        console.log(decodeToken)
+   
+        const user =await User.findById(decodeToken?._id)
+        console.log("user",user)
+           if(!user){
+              throw new ApiError(401, "Refresh token invalid")
+          }
+   
+          if(incomingRefreshToken !== user?.refreshToken){
+               throw new ApiError(401, "Refresh token is expired used")
+          }
+         const option = {
+               httpOnly:true,
+               secure:true
+           }
+          return generateRefreshAccessToken(user._id, res)
+        //    const {accessToken,newrefreshToken} = await generateRefreshAccessToken(user._id, res);
+        //    return res
+        //    .status(200)
+        //    .cookie("accessToken",accessToken,option)
+        //    .cookie("refreshToken",newrefreshToken,option)
+        //    .json(
+        //        new ApiResponse(
+        //            200,
+        //            {
+        //               accessToken,refreshToken:newrefreshToken
+        //            },
+        //            "Access Token refresh successfully"
+        //        )
+        //    )
+     } catch (error) {
+        throw new ApiError(401,error?.message ||" Invalid refreshToken")
+     }
+
+     }
+
+ ) 
 
 export {registerUser,
-    loginUser,
+    refreshAccessToken,
+    sendOtp,
+    verifyOtp,
     logoutUser}
