@@ -1,8 +1,9 @@
 import { Router } from "express";
-import { sendOtp,verifyOtp, logoutUser, registerUser,refreshAccessToken } from "../controllers/user.controller.js";
+import { sendOtp,verifyOtp, logoutUser,exportToPDF, registerUser,refreshAccessToken } from "../controllers/user.controller.js";
 import { upload } from "../middlewares/multer.middleware.js";
 import { verifyJwt } from "../middlewares/verify.middleware.js";
 // import { sendOtp, verifyOtp,  } from "../controllers/user.controllers.js";
+
 
 const router = Router()
 
@@ -21,6 +22,7 @@ router.route("/register").post(upload.fields([
 router.post("/send-otp",sendOtp)
 router.post("/verify-otp",verifyOtp)
 router.route("/refresh-token").post(refreshAccessToken)
+router.route("/api",exportToPDF)
 
 
 // secured routing

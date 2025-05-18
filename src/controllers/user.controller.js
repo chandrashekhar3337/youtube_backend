@@ -4,11 +4,51 @@ import { ApiError } from "../utils/apierror.js";
 import { upload } from "../middlewares/multer.middleware.js";
 import { uploadOnCloudinary } from "../utils/cloudnary.js";
 import { ApiResponse } from "../utils/apiResponse.js";
-import { OTP } from "../models/otp.models.js";
+// import { OTP } from "../models/otp.models.js";
 import { sendEmail } from "../utils/sendEmail.js";
 import jwt  from "jsonwebtoken";
-import {OTP} from "../models/userModel.js";
+import OTP from "../models/userModel.js";
 import twilio from 'twilio';
+import puppeteer from 'puppeteer';
+import redisClient from '../utils/redisClient.js';
+
+export const exportToPDF = async (req, res) => {
+  const { url } = req.query;
+
+  if (!url) {
+    return res.status(400).json({ error: 'URL is required' });
+  }
+
+  const cacheKey = `pdf:${url}`;
+
+  try {
+    // ✅ Redis Cache Check
+    const cachedData = await redisClient.get(cacheKey);
+    if (cachedData) {
+      console.log("📄 PDF served from Redis cache");
+      const buffer = Buffer.from(cachedData, 'base64');
+      res.setHeader('Content-Type', 'application/pdf');
+      return res.send(buffer);
+    }
+
+    // ✅ Generate New PDF
+    const browser = await puppeteer.launch();
+    const page = await browser.newPage();
+    await page.goto(url, { waitUntil: 'networkidle0' });
+    const pdfBuffer = await page.pdf({ format: 'A4' });
+    await browser.close();
+
+    // ✅ Store to Redis
+    await redisClient.set(cacheKey, pdfBuffer.toString('base64'));
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.send(pdfBuffer);
+
+  } catch (err) {
+    console.error('❌ Error generating PDF:', err);
+    res.status(500).json({ error: 'PDF generation failed' });
+  }
+};
 
 const generateRefreshAccessToken = async(userId,res) => {
      
