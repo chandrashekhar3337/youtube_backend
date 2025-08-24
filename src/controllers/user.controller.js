@@ -1,113 +1,18 @@
 import { asyncHandler } from "../utils/asynchandler.js";
 import { User } from "../models/user.models.js";
 import { ApiError } from "../utils/apierror.js";
-//import { upload } from "../middlewares/multer.middleware.js";
-//import { uploadOnCloudinary } from "../utils/cloudnary.js";
+import { upload } from "../middlewares/multer.middleware.js";
+import { uploadOnCloudinary } from "../utils/cloudnary.js";
 import { ApiResponse } from "../utils/apiResponse.js";
-// import { OTP } from "../models/otp.models.js";
-//import { sendEmail } from "../utils/sendEmail.js";
+import { OTP } from "../models/otp.models.js";
+import { sendEmail } from "../utils/sendEmail.js";
 import jwt  from "jsonwebtoken";
-import OTP from "../models/userModel.js";
 import twilio from 'twilio';
-import { generatePDF } from "../services/pdf.service.js";
-
 import express from 'express';
-import puppeteer from 'puppeteer';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { getTemplate } from '../utils/generateTemplate.js';
 
-const DynamicReal = async (req, res) => {
-  try {
-    const { outputType = 'pdf', fileName = 'output.pdf', data } = req.body;
-    if (!data) return res.status(400).json({ message: 'Missing data' });
-
-    const htmlContent = getTemplate(data); // Dynamic HTML
-
-    const browser = await puppeteer.launch();
-    const page = await browser.newPage();
-    await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
-
-    if (outputType === 'pdf') {
-      const pdfBuffer = await page.pdf({ format: 'A4' });
-      await browser.close();
-
-      res.set({
-        'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="${fileName}"`,
-      });
-
-      return res.send(pdfBuffer);
-    }
-
-    if (outputType === 'png') {
-      const imageBuffer = await page.screenshot({ fullPage: true });
-      await browser.close();
-
-      res.set({
-        'Content-Type': 'image/png',
-        'Content-Disposition': `attachment; filename="${fileName}"`,
-      });
-
-      return res.send(imageBuffer);
-    }
-
-    await browser.close();
-    return res.status(400).json({ message: 'Invalid output type' });
-  } catch (err) {
-    console.error('Render failed:', err);
-    res.status(500).json({ message: 'Internal Server Error' });
-  }
-};
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// export const renderPdf = async (req, res) => {
-//   try {
-//     const html = "<h1>Invitation PDF (ES6)</h1>";
-//     const pdfBuffer = await generatePDF(html);
-
-//     res.set({
-//       "Content-Type": "application/pdf",
-//       "Content-Disposition": "attachment; filename=invite.pdf",
-//     });
-
-//     res.send(pdfBuffer);
-//   } catch (error) {
-//     console.error("PDF Generation Error:", error);
-//     res.status(500).send("Something went wrong");
-//   }
-// };
 
 const generateRefreshAccessToken = async(userId,res) => {
      
@@ -169,8 +74,8 @@ const registerUser = asyncHandler(async(req,res) =>{
     //    throw new ApiError(404,"full name is required")
     // }
     // Checking the validation of all the field:
-    if([username, fullname, email, password,phone].some((field) => field?.trim() === "")){
-        throw new ApiError(404,"this field need to correction")
+    if([username, fullname, email, password].some((field) => field?.trim() === "")){
+        throw new ApiError(400,"this field need to correction")
     }
     const exitedUser =await User.findOne({
         $or:[{username},{email}]
@@ -211,40 +116,41 @@ const registerUser = asyncHandler(async(req,res) =>{
    }
 
    return res.status(201).json(
-      new  ApiResponse(200,"djfnufc")
+      new  ApiResponse(200,"user created successfully",{
+         user:createdUser})
    )
 })
 
-//    const loginUser = asyncHandler(async(req,res) => {
-//        // req.body = data
-//        //username or mail
-//        //find the user
-//        // password check
-//        //access and refresh token
-//        //send cookie
-//        const {email, username, password} =req.body
-//        console.log(email,password)
+const loginUser = asyncHandler(async(req,res) => {
+        // req.body = data
+        //username or mail
+        //find the user
+        // password check
+        //access and refresh token
+        //send cookie
+        const {email, username, password} =req.body
+        console.log(email,password)
 
-//        if(!(username || email)){
-//         throw new ApiError(400,"username and password is reqired")
-//        }
-//        const user = await User.findOne({
-//          $or: [{username}, {email}]
-//        })
-//        if(!user){
-//          throw new ApiError(404, "user does not exist")
-//        }
-//        const isPasswordValue = await user.isPasswordCorrect(password)
-//        console.log(isPasswordValue)
+        if(!(username || email)){
+         throw new ApiError(400,"username and password is reqired")
+        }
+       const user = await User.findOne({
+          $or: [{username}, {email}]
+        })
+        if(!user){
+          throw new ApiError(404, "user does not exist")
+        }
+        const isPasswordValue = await user.isPasswordCorrect(password)
+        console.log(isPasswordValue)
 
-//        if(!isPasswordValue){
-//          throw new ApiError(401,"Enter the write password")
-//        }
+       if(!isPasswordValue){
+          throw new ApiError(401,"Enter the write password")
+        }
 
-//      return await generateRefreshAccessToken(user._id,res)
-//     //  const loggedInUser = await User.findById(user._id).select("-password -refreshToken")
+      return await generateRefreshAccessToken(user._id,res)
+     //  const loggedInUser = await User.findById(user._id).select("-password -refreshToken")
 
-//    })
+    })
 // ✅ Send OTP Controller
 // const DUMMY_OTP = "123456";
 const sendOtp = asyncHandler(async (req, res) => {
@@ -340,7 +246,7 @@ const verifyOtp = asyncHandler(async (req, res) => {
     return await generateRefreshAccessToken(user._id, res);
 });
    
-   const logoutUser = asyncHandler(async(req,res) =>{
+ const logoutUser = asyncHandler(async(req,res) =>{
       
      await  User.findByIdAndUpdate(
         req.user._id,{
@@ -411,10 +317,26 @@ const verifyOtp = asyncHandler(async (req, res) => {
  const changeCurrentPassword = asyncHandler(async(req,res) =>{
     const {oldPassword, newPassword} = req.body
     const user = await User.findById(req.user?._id)
+    const isPasswordCorrect = user.isPasswordCorrect(oldPassword)
+    if(!isPasswordCorrect){
+      throw new ApiError(400,"Invalid password")
+    }
+   user.password = newPassword
+   await user.save({validateBeforeSave:false})
+   return res
+   .status(200)
+   .json(new ApiResponse(200,{},"password change successfully"))
+
+})
+const getCurrentUser = asyncHandler(async(req,res) => {
+   return res.status(200)
+   .json(200,req.user,"user fetched successfully")
 })
 
 export {registerUser,
-  DynamicReal,
+  loginUser,
+  changeCurrentPassword,
+  getCurrentUser,
     refreshAccessToken,
     sendOtp,
     verifyOtp,
