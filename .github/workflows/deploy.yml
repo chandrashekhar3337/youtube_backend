@@ -13,16 +13,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Build Docker image
-        run: docker build -t youtube-backend .
-
-      - name: Deploy to EC2
+      - name: Copy code to EC2 and Deploy
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.EC2_IP }}
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
+            rm -rf youtube_backend
+            git clone https://github.com/chandrashekhar3337/youtube_backend.git
+            cd youtube_backend
+
             docker stop backend || true
             docker rm backend || true
+
+            docker build -t youtube-backend .
             docker run -d --name backend -p 3000:3000 youtube-backend
