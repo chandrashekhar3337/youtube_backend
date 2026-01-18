@@ -8,4 +8,6 @@ RUN npm install
 COPY . .
 
 EXPOSE 3000
-CMD ["npm", "src/index.js"]
+
+# ✅ CORRECT ENTRYPOINT
+CMD ["node", "src/index.js"]
