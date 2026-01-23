@@ -68,7 +68,7 @@ const registerUser = asyncHandler(async(req,res) =>{
     console.log(fullname);
     console.log(email);
     console.log(password);
-    console.log(phone)
+    console.log(phonsdfe)
 
     // if(fullname = ""){
     //    throw new ApiError(404,"full name is required")
